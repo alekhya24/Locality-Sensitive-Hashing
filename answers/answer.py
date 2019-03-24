@@ -74,7 +74,7 @@ def data_preparation(data_file, key, state):
     state -- state abbreviation (see: all_states)
     """
     spark = init_spark()
-    lines = spark.read.text(filename).rdd
+    lines = spark.read.text(data_file).rdd
     parts= lines.map(lambda row: row.value.split(","))
     rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
     global data_df
