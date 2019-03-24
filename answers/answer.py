@@ -98,10 +98,10 @@ def getFromDict(key):
     dict_op = data_f.select(data_f._2).where(data_f._1==key).collect()
     return dict_op
 
-def createDict(df):
+def createDict(data):
     dict_list=[()]
     for plant in all_plants:
-        plant_states = df.select(df.states).where(df.plant_name==plant).rdd.flatMap(lambda x: x).collect()
+        plant_states = data.select(data.states).where(data.plant_name==plant).rdd.flatMap(lambda x: x).collect()
         dict1= dict( [ (state,1) if state in all_states  else (state,0) for state in plant_states] )
         tuple_data=(plant,dict1)
         dict_list.append(tuple_data)
