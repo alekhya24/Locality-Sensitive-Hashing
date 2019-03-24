@@ -5,6 +5,7 @@ import random
 # Dask imports
 import dask.bag as db
 import dask.dataframe as df
+from pyspark.sql import Row
 
 
 data_df=None
