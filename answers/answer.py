@@ -10,6 +10,7 @@ from pyspark.sql import Row
 
 data_df=None
 data_f=None
+all_plants=None
 
 all_states = ["ab", "ak", "ar", "az", "ca", "co", "ct", "de", "dc",
               "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -81,6 +82,8 @@ def data_preparation(data_file, key, state):
     global data_df
     data_df = spark.createDataFrame(rdd_data)
     data_df.cache()
+    global all_plants
+    all_plants=data_df.select(df.plant_name).rdd.flatMap(lambda x:x).collect()
     rdd=createDict(data_df)
     global data_f
     data_f = spark.createDataFrame(rdd)
