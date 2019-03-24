@@ -102,6 +102,7 @@ def createDict(data):
     dict_list=[()]
     for plant in all_plants:
         plant_states = data.select(data.states).where(data.plant_name==plant).rdd.flatMap(lambda x: x).collect()
+        print(plant_states)
         dict1= dict( [ (state,1) if state in all_states  else (state,0) for state in plant_states] )
         tuple_data=(plant,dict1)
         dict_list.append(tuple_data)
