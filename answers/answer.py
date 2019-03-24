@@ -7,6 +7,9 @@ import dask.bag as db
 import dask.dataframe as df
 
 
+data_df=None
+data_f=None
+
 all_states = ["ab", "ak", "ar", "az", "ca", "co", "ct", "de", "dc",
               "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
               "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv",
@@ -70,7 +73,36 @@ def data_preparation(data_file, key, state):
     key -- plant name
     state -- state abbreviation (see: all_states)
     """
-    raise Exception("Not implemented yet")
+    spark = init_spark()
+    lines = spark.read.text(filename).rdd
+    parts= lines.map(lambda row: row.value.split(","))
+    rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
+    global data_df
+    data_df = spark.createDataFrame(rdd_data)
+    data_df.cache()
+    rdd=createDict(data_df)
+    global data_f
+    data_f = spark.createDataFrame(rdd)
+    data_f.cache()
+    print(data_f)
+    dict_op=getFromDict(key)
+    row = Row(**dict_op[0][0])
+    print(row.asDict()[state])
+    return row.asDict()[state]
+
+def getFromDict(key):
+    dict_op = data_f.select(data_f._2).where(data_f._1==key).collect()
+    return dict_op
+
+def createDict(df):
+    dict_list=[()]
+    for plant in all_plants:
+        plant_states = df.select(df.states).where(df.plant_name==plant).rdd.flatMap(lambda x: x).collect()
+        dict1= dict( [ (state,1) if state in all_states  else (state,0) for state in plant_states] )
+        tuple_data=(plant,dict1)
+        dict_list.append(tuple_data)
+    rdd = sc.parallelize(dict_list[1:])
+    return rdd
 
 
 def primes(n, c):
