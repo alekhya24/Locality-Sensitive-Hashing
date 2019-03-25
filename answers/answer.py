@@ -100,15 +100,18 @@ def getFromDict(key):
 
 def createDict(data):
     dict_list=[()]
-    for plant in all_plants:
+    for iteration in data.collect():
+        plant_states=iteration.states
+        print(plant_states)
+    '''for plant in all_plants:
         plant_data = data.select(data.states).where(data.plant_name==plant).rdd.flatMap(lambda x: x).collect()
         plant_states=[y for x in plant_data for y in x]
         print(plant_states)
         dict1= dict( [ (state,1) if state in plant_states  else (state,0) for state in all_states] )
         tuple_data=(plant,dict1)
         dict_list.append(tuple_data)
-    rdd = sc.parallelize(dict_list[1:])
-    return rdd
+    rdd = sc.parallelize(dict_list[1:])'''
+    return []
 
 
 def primes(n, c):
