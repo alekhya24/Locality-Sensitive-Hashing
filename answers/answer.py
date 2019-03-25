@@ -106,7 +106,6 @@ def createDict(data):
         dict1= dict( [ (state,1) if state in plant_states  else (state,0) for state in all_states] )
         tuple_data=(iteration.plant_name,dict1)
         dict_list.append(tuple_data)
-    print(dict_list)
     rdd = sc.parallelize(dict_list[1:])
     return rdd
 
