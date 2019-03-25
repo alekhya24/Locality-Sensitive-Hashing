@@ -82,8 +82,8 @@ def data_preparation(data_file, key, state):
     global data_df
     data_df = spark.createDataFrame(rdd_data)
     data_df.cache()
-    global all_plants
-    all_plants=data_df.select(data_df.plant_name).rdd.flatMap(lambda x:x).collect()
+    '''global all_plants
+    all_plants=data_df.select(data_df.plant_name).rdd.flatMap(lambda x:x).collect()'''
     rdd=createDict(data_df)
     global data_f
     data_f = spark.createDataFrame(rdd)
@@ -104,7 +104,7 @@ def createDict(data):
     for iteration in data.collect():
         plant_states=iteration.states
         dict1= dict( [ (state,1) if state in plant_states  else (state,0) for state in all_states] )
-        tuple_data=(plant,dict1)
+        tuple_data=(iteration.plant_name,dict1)
         dict_list.append(tuple_data)
     print(dict_list)
     rdd = sc.parallelize(dict_list[1:])
