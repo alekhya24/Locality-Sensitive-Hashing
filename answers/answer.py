@@ -104,7 +104,7 @@ def createDict(data):
         plant_data = data.select(data.states).where(data.plant_name==plant).rdd.flatMap(lambda x: x).collect()
         plant_states=[y for x in plant_data for y in x]
         print(plant_states)
-        dict1= dict( [ (state,1) if state in all_states  else (state,0) for state in plant_states] )
+        dict1= dict( [ (state,1) if state in plant_states  else (state,0) for state in all_states] )
         tuple_data=(plant,dict1)
         dict_list.append(tuple_data)
     rdd = sc.parallelize(dict_list[1:])
@@ -123,7 +123,20 @@ def primes(n, c):
     n -- integer representing the number of consecutive prime numbers
     c -- minimum prime number value
     """
-    raise Exception("Not implemented yet")
+    primes = []
+for possiblePrime in range(2, n) and possiblePrime<=c:
+    
+    # Assume number is prime until shown it is not. 
+    isPrime = True
+    for num in range(2, int(possiblePrime ** 0.5) + 1):
+        if possiblePrime % num == 0:
+            isPrime = False
+            break
+      
+    if isPrime:
+        primes.append(possiblePrime)
+    print(primes)
+    return primes
 
 
 def hash_plants(s, m, p, x):
