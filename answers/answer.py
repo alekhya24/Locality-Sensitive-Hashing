@@ -91,6 +91,7 @@ def data_preparation(data_file, key, state):
     print(data_f)
     dict_op=getFromDict(key)
     row = Row(**dict_op[0][0])
+    print(row)
     print(row.asDict()[state])
     return row.asDict()[state]
 
@@ -102,16 +103,12 @@ def createDict(data):
     dict_list=[()]
     for iteration in data.collect():
         plant_states=iteration.states
-        print(plant_states)
-    '''for plant in all_plants:
-        plant_data = data.select(data.states).where(data.plant_name==plant).rdd.flatMap(lambda x: x).collect()
-        plant_states=[y for x in plant_data for y in x]
-        print(plant_states)
         dict1= dict( [ (state,1) if state in plant_states  else (state,0) for state in all_states] )
         tuple_data=(plant,dict1)
         dict_list.append(tuple_data)
-    rdd = sc.parallelize(dict_list[1:])'''
-    return []
+    print(dict_list)
+    rdd = sc.parallelize(dict_list[1:])
+    return rdd
 
 
 def primes(n, c):
