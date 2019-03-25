@@ -78,10 +78,12 @@ def data_preparation(data_file, key, state):
     spark = init_spark()
     lines = spark.read.text(data_file).rdd
     parts= lines.map(lambda row: row.value.split(","))
-    rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
-    global data_df
+    '''rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
+    global data_df'''
+    rdd_data = parts.map(lambda p:(p[0],p[1:])
     data_df = spark.createDataFrame(rdd_data)
     data_df.cache()
+    print(data_df)
     '''global all_plants
     all_plants=data_df.select(data_df.plant_name).rdd.flatMap(lambda x:x).collect()'''
     rdd=createDict(data_df)
