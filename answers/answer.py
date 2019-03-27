@@ -255,14 +255,16 @@ def signatures(datafile, seed, n, state):
         hash_list.append((a*x + b)%p)
     print(hash_list)'''
     plants_df = createMatrix(parts)
-    for i in range(0,n):
+    print(plants_df)
+    op = plants_df.mapValues(get_signMatrix)
+    '''for i in range(0,n):
         for ip in plants_df.collect():
             print(ip)
             a=random.randint(0,m)
             b=random.randint(0,m)
             p=get_primes[i]
-            op = minhash(ip._2,a,b,p)
-            print(op)
+            op = minhash(ip._2,a,b,p)'''
+    print(op)
     raise Exception("Not implemented yet")
 
 def createMatrix(parts):
@@ -273,9 +275,10 @@ def createMatrix(parts):
     plants_data_df.cache()
     all_plants = plants_data_df.select(plants_data_df.plant_name).rdd.flatMap(lambda x: x).collect()
     rdd=create_Plants_Dict(plants_data_df,all_plants)
-    global plants_data_f
+    '''global plants_data_f
     plants_data_f =rdd.map(lambda x: Row(**x)).toDF()
-    return plants_data_f
+    return plants_data_f'''
+    return rdd
 
 def create_Plants_Dict(plants_df,all_plants):
     dict_list={}
@@ -288,8 +291,19 @@ def create_Plants_Dict(plants_df,all_plants):
             else:
                 dict1.append(0)
         dict_list[state]=dict1
-    rdd = sc.parallelize([dict_list])
-    return rdd
+    return dict_list
+    '''rdd = sc.parallelize([dict_list])
+    return rdd'''
+
+def get_signMatrix(IpLine):
+    sign = [2000]*20
+    for x in range(0, 100):
+      if IpLine[x] == 1:
+        for i in range(0, 20):
+          h = (3*x + 13*i)%100
+          if sign[i] > h:
+            sign[i] = h
+    return sign
 
 def minhash(list,a,b,p):
     x =len(list)
