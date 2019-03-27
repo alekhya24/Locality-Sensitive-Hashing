@@ -255,16 +255,15 @@ def signatures(datafile, seed, n, state):
         hash_list.append((a*x + b)%p)
     print(hash_list)'''
     plants_df = createMatrix(parts)
-    print(plants_df)
-    op = plants_df.mapValues(get_signMatrix)
-    '''for i in range(0,n):
+    '''op = plants_df.mapValues(get_signMatrix)'''
+    for i in range(0,n):
         for ip in plants_df.collect():
             print(ip)
             a=random.randint(0,m)
             b=random.randint(0,m)
             p=get_primes[i]
-            op = minhash(ip._2,a,b,p)'''
-    print(op)
+            op = minhash(ip._2,a,b,p)
+            print("op:{0}".format(op))
     raise Exception("Not implemented yet")
 
 def createMatrix(parts):
@@ -275,27 +274,23 @@ def createMatrix(parts):
     plants_data_df.cache()
     all_plants = plants_data_df.select(plants_data_df.plant_name).rdd.flatMap(lambda x: x).collect()
     rdd=create_Plants_Dict(plants_data_df,all_plants)
-    '''global plants_data_f
-    plants_data_f =rdd.map(lambda x: Row(**x)).toDF()
-    return plants_data_f'''
-    return rdd
+    global plants_data_f
+    plants_data_f =spark.createDataFrame(rdd)
+    return plants_data_f
 
 def create_Plants_Dict(plants_df,all_plants):
-    dict_list={}
+    dict_list=[()]
     dict1=[]
     for state in all_states:
         plant_names = plants_df.select(plants_df.plant_name).where(array_contains(plants_df.states,state)).rdd.flatMap(lambda x: x).collect()
-        for plant_name in all_plants:
-            if plant_name in plant_names:
-                dict1.append(1)
-            else:
-                dict1.append(0)
-        dict_list[state]=dict1
-    return dict_list
-    '''rdd = sc.parallelize([dict_list])
-    return rdd'''
+        dict1= [ 1 if plant_name in plant_names  else 0 for plant_name in all_plants]
+        op=(state,dict1)
+        dict_list.append(op)
+    rdd = sc.parallelize(dict_list[1:])
+    return rdd
 
 def get_signMatrix(IpLine):
+    print("line:{0}".format(IPLine))
     sign = [2000]*20
     for x in range(0, 100):
       if IpLine[x] == 1:
