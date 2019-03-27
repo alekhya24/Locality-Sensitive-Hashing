@@ -6,6 +6,10 @@ import random
 import dask.bag as db
 import dask.dataframe as df
 from pyspark.sql import Row
+from pyspark import SparkContext
+from pyspark.ml.linalg import SparseVector
+from pyspark.sql.functions import array_contains,array
+sc = SparkContext()
 
 
 data_df=None
@@ -78,14 +82,10 @@ def data_preparation(data_file, key, state):
     spark = init_spark()
     lines = spark.read.text(data_file).rdd
     parts= lines.map(lambda row: row.value.split(","))
-    '''rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
-    global data_df'''
-    rdd_data = parts.map(lambda p:(p[0],p[1:])
+    rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
+    global data_df                         
     data_df = spark.createDataFrame(rdd_data)
     data_df.cache()
-    print(data_df)
-    '''global all_plants
-    all_plants=data_df.select(data_df.plant_name).rdd.flatMap(lambda x:x).collect()'''
     rdd=createDict(data_df)
     global data_f
     data_f = spark.createDataFrame(rdd)
@@ -93,8 +93,6 @@ def data_preparation(data_file, key, state):
     print(data_f)
     dict_op=getFromDict(key)
     row = Row(**dict_op[0][0])
-    print(row)
-    print(row.asDict()[state])
     return row.asDict()[state]
 
 def getFromDict(key):
@@ -125,7 +123,8 @@ def primes(n, c):
     c -- minimum prime number value
     """
     primes = []
-    for possiblePrime in range(2, n):
+    possiblePrime=c
+    while(True):
     # Assume number is prime until shown it is not. 
         isPrime = True
         for num in range(2, int(possiblePrime ** 0.5) + 1):
@@ -133,8 +132,11 @@ def primes(n, c):
                 isPrime = False
                 break
       
-        if isPrime and possiblePrime<=c:
+        if isPrime and possiblePrime>=c and len(primes)<n:
             primes.append(possiblePrime)
+        if(len(primes)==n):
+            break
+        possiblePrime+=1
     return primes
 
 
@@ -156,7 +158,12 @@ def hash_plants(s, m, p, x):
     p -- prime number
     x -- value to be hashed
     """
-    raise Exception("Not implemented yet")
+    if s!=None:
+        random.seed(s)
+    a = random.randint(1,m)
+    b=random.randint(1,m)
+    hash_value = (a*x + b)%p
+    return hash_value
 
 
 def hash_list(s, m, n, i, x):
@@ -178,8 +185,20 @@ def hash_list(s, m, n, i, x):
     i -- index of hash function to use
     x -- value to hash
     """
-    raise Exception("Not implemented yet")
+    get_primes =primes(n,m)
+    ith_prime_number=get_primes[i]
+    hash_values=create_hash_list(get_primes,s,m,n,x)   
+    return hash_values[i]
 
+def create_hash_list(prime_list,s,m,n,x):
+    hash_values=[]
+    for j in range(0,n):
+        if j==0:
+            hash_values.append(hash_plants(s,m,prime_list[j],x))
+        else:
+            hash_values.append(hash_plants(None,m,prime_list[j],x))
+    return hash_values
+    
 
 def signatures(datafile, seed, n, state):
     """We will now compute the min-hash signature matrix of the states.
@@ -216,8 +235,54 @@ def signatures(datafile, seed, n, state):
     n -- number of hash functions to generate
     state -- state abbreviation
     """
+    spark = init_spark()
+    lines = spark.read.text(datafile).rdd
+    parts= lines.map(lambda row: row.value.split(","))
+    rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
+    global data_df                         
+    data_df = spark.createDataFrame(rdd_data)
+    data_df.cache()
+    rdd=createDict(data_df)
+    global data_f
+    data_f = spark.createDataFrame(rdd)
+    m=lines.count()
+    get_primes=primes(n,m)
+    random.seed(seed)
+    hash_list=[]
+    for i in range(0,n):
+        a=random.randint(0,m)
+        b=random.randint(0,m)
+        x=i
+        p=get_primes[i]
+        hash_list.append((a*x + b)%p)
+    print(hash_list)
+    plantsrdd = createMatrix(parts)
     raise Exception("Not implemented yet")
 
+def createMatrix(parts):
+    spark = init_spark()
+    plants_rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
+    global plants_data_df
+    plants_data_df = spark.createDataFrame(plants_rdd_data)
+    plants_data_df.cache()
+    all_plants = plants_data_df.select(plants_data_df.plant_name).rdd.flatMap(lambda x: x).collect()
+    rdd=create_Plants_Dict(plants_data_df,all_plants)
+    global plants_data_f
+    plants_data_f = spark.createDataFrame(rdd)
+
+def create_Plants_Dict(plants_df,all_plants):
+    dict_list={}
+    for state in all_states:
+        plant_names = plants_df.select(plants_df.plant_name).where(array_contains(plants_df.states,state)).rdd.flatMap(lambda x: x).collect()
+        dict1= [ 1 if plant_name in plant_names  else 0 for plant_name in all_plants]
+        dict_list[state]=dict1
+        '''tuple_data=(state,dict1)
+        dict_list.append(tuple_data)'''
+    print(list(dict_list.items())[:3])
+    '''op =SparseVector(dict_list)
+    rdd = sc.parallelize(dict_list[1:])
+    return rdd'''
+    return []
 
 def hash_band(datafile, seed, state, n, b, n_r):
     """We will now hash the signature matrix in bands. All signature vectors,
