@@ -9,12 +9,15 @@ from pyspark.sql import Row
 from pyspark import SparkContext
 from pyspark.ml.linalg import SparseVector
 from pyspark.sql.functions import array_contains,array
+import numpy as np
 sc = SparkContext()
 
 
 data_df=None
 data_f=None
 all_plants=None
+state_dict_rdd=None
+parts=None
 
 all_states = ["ab", "ak", "ar", "az", "ca", "co", "ct", "de", "dc",
               "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -81,6 +84,7 @@ def data_preparation(data_file, key, state):
     """
     spark = init_spark()
     lines = spark.read.text(data_file).rdd
+    global parts
     parts= lines.map(lambda row: row.value.split(","))
     rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
     global data_df                         
@@ -106,8 +110,9 @@ def createDict(data):
         dict1= dict( [ (state,1) if state in plant_states  else (state,0) for state in all_states] )
         tuple_data=(iteration.plant_name,dict1)
         dict_list.append(tuple_data)
-    rdd = sc.parallelize(dict_list[1:])
-    return rdd
+    global state_dict_rdd
+    state_dict_rdd = sc.parallelize(dict_list[1:])
+    return state_dict_rdd
 
 
 def primes(n, c):
@@ -238,25 +243,26 @@ def signatures(datafile, seed, n, state):
     spark = init_spark()
     lines = spark.read.text(datafile).rdd
     parts= lines.map(lambda row: row.value.split(","))
-    rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
-    global data_df                         
-    data_df = spark.createDataFrame(rdd_data)
-    data_df.cache()
-    rdd=createDict(data_df)
-    global data_f
-    data_f = spark.createDataFrame(rdd)
     m=lines.count()
     get_primes=primes(n,m)
     random.seed(seed)
-    hash_list=[]
+    '''hash_list=[]
     for i in range(0,n):
         a=random.randint(0,m)
         b=random.randint(0,m)
         x=i
         p=get_primes[i]
         hash_list.append((a*x + b)%p)
-    print(hash_list)
-    plantsrdd = createMatrix(parts)
+    print(hash_list)'''
+    plants_df = createMatrix(parts)
+    for i in range(0,n):
+        for ip in plants_df.collect():
+            print(ip)
+            a=random.randint(0,m)
+            b=random.randint(0,m)
+            p=get_primes[i]
+            op = minhash(ip._2,a,b,p)
+            print(op)
     raise Exception("Not implemented yet")
 
 def createMatrix(parts):
@@ -268,21 +274,26 @@ def createMatrix(parts):
     all_plants = plants_data_df.select(plants_data_df.plant_name).rdd.flatMap(lambda x: x).collect()
     rdd=create_Plants_Dict(plants_data_df,all_plants)
     global plants_data_f
-    plants_data_f = spark.createDataFrame(rdd)
+    plants_data_f =rdd.map(lambda x: Row(**x)).toDF()
+    return plants_data_f
 
 def create_Plants_Dict(plants_df,all_plants):
     dict_list={}
+    dict1=[]
     for state in all_states:
         plant_names = plants_df.select(plants_df.plant_name).where(array_contains(plants_df.states,state)).rdd.flatMap(lambda x: x).collect()
-        dict1= [ 1 if plant_name in plant_names  else 0 for plant_name in all_plants]
+        for plant_name in all_plants:
+            if plant_name in plant_names:
+                dict1.append(1)
+            else:
+                dict1.append(0)
         dict_list[state]=dict1
-        '''tuple_data=(state,dict1)
-        dict_list.append(tuple_data)'''
-    print(list(dict_list.items())[:3])
-    '''op =SparseVector(dict_list)
-    rdd = sc.parallelize(dict_list[1:])
-    return rdd'''
-    return []
+    rdd = sc.parallelize([dict_list])
+    return rdd
+
+def minhash(list,a,b,p):
+    x =len(list)
+    return np.array(((a * x) + b) % p).min()
 
 def hash_band(datafile, seed, state, n, b, n_r):
     """We will now hash the signature matrix in bands. All signature vectors,
