@@ -9,7 +9,9 @@ from pyspark.sql import Row
 from pyspark import SparkContext
 from pyspark.ml.linalg import SparseVector
 from pyspark.sql.functions import array_contains,array
+from pyspark.sql.functions import monotonically_increasing_id
 import numpy as np
+import itertools
 sc = SparkContext()
 
 
@@ -18,6 +20,7 @@ data_f=None
 all_plants=None
 state_dict_rdd=None
 parts=None
+all_plants_indexed=None
 
 all_states = ["ab", "ak", "ar", "az", "ca", "co", "ct", "de", "dc",
               "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -246,25 +249,24 @@ def signatures(datafile, seed, n, state):
     m=lines.count()
     get_primes=primes(n,m)
     random.seed(seed)
-    '''hash_list=[]
-    for i in range(0,n):
-        a=random.randint(0,m)
-        b=random.randint(0,m)
-        x=i
-        p=get_primes[i]
-        hash_list.append((a*x + b)%p)
-    print(hash_list)'''
     plants_df = createMatrix(parts)
+    '''ip=plants_df.where(plants_df._1==state).select(plants_df._2).rdd.flatMap(lambda x:x).collect()
+    flattened_list = list(itertools.chain(*ip))'''
     '''op = plants_df.mapValues(get_signMatrix)'''
+    dict_op=getFromPlantDict(state)
+    row = Row(**dict_op[0][0])
+    op_dict={}
     for i in range(0,n):
-        for ip in plants_df.collect():
-            print(ip)
-            a=random.randint(0,m)
-            b=random.randint(0,m)
+            a=random.randint(1,m)
+            b=random.randint(1,m)
             p=get_primes[i]
-            op = minhash(ip._2,a,b,p)
-            print("op:{0}".format(op))
-    raise Exception("Not implemented yet")
+            op = minhash(row,a,b,p)
+            op_dict[i]=op
+    return ppd(op_dict)
+
+def getFromPlantDict(key):
+    plants_dict_op = plants_data_f.select(plants_data_f._2).where(plants_data_f._1==key).collect()
+    return plants_dict_op
 
 def createMatrix(parts):
     spark = init_spark()
@@ -272,7 +274,9 @@ def createMatrix(parts):
     global plants_data_df
     plants_data_df = spark.createDataFrame(plants_rdd_data)
     plants_data_df.cache()
-    all_plants = plants_data_df.select(plants_data_df.plant_name).rdd.flatMap(lambda x: x).collect()
+    global all_plants_indexed
+    all_plants_indexed= plants_data_df.select(plants_data_df.plant_name).withColumn("id", monotonically_increasing_id())
+    all_plants = all_plants_indexed.select(all_plants_indexed.plant_name).rdd.flatMap(lambda x: x).collect()
     rdd=create_Plants_Dict(plants_data_df,all_plants)
     global plants_data_f
     plants_data_f =spark.createDataFrame(rdd)
@@ -283,26 +287,22 @@ def create_Plants_Dict(plants_df,all_plants):
     dict1=[]
     for state in all_states:
         plant_names = plants_df.select(plants_df.plant_name).where(array_contains(plants_df.states,state)).rdd.flatMap(lambda x: x).collect()
-        dict1= [ 1 if plant_name in plant_names  else 0 for plant_name in all_plants]
+        dict1= dict([ (plant_name,1) if plant_name in plant_names  else (plant_name,0) for plant_name in all_plants])
         op=(state,dict1)
         dict_list.append(op)
     rdd = sc.parallelize(dict_list[1:])
     return rdd
 
-def get_signMatrix(IpLine):
-    print("line:{0}".format(IPLine))
-    sign = [2000]*20
-    for x in range(0, 100):
-      if IpLine[x] == 1:
-        for i in range(0, 20):
-          h = (3*x + 13*i)%100
-          if sign[i] > h:
-            sign[i] = h
-    return sign
-
-def minhash(list,a,b,p):
-    x =len(list)
-    return np.array(((a * x) + b) % p).min()
+def minhash(data,a,b,p):
+    min_value=[]
+    row_dict=data.asDict()    
+    for value in all_plants_indexed.collect():
+        index=value.id
+        if(row_dict[value.plant_name]!=0):
+            '''index=all_plants_indexed.select(all_plants_indexed.id).where(all_plants_indexed.plant_name==value).rdd'''
+            hash_value = (a*index + b)%p
+            min_value.append(hash_value)
+    return min(min_value)
 
 def hash_band(datafile, seed, state, n, b, n_r):
     """We will now hash the signature matrix in bands. All signature vectors,
@@ -330,7 +330,26 @@ def hash_band(datafile, seed, state, n, b, n_r):
     b -- the band index
     n_r -- the number of rows
     """
-    raise Exception("Not implemented yet")
+    '''sign_dict ={0:1,1:2,2:3,3:4,4:5,5:6,6:7,7:7}'''
+    spark = init_spark()
+    lines = spark.read.text(datafile).rdd
+    parts= lines.map(lambda row: row.value.split(","))
+    m=lines.count()
+    get_primes=primes(n,m)
+    random.seed(seed)
+    plants_df = createMatrix(parts)
+    dict_op=getFromPlantDict(state)
+    row = Row(**dict_op[0][0])
+    sign_dict={}
+    for i in range(0,n):
+        a=random.randint(1,m)
+        b=random.randint(1,m)
+        p=get_primes[i]
+        op = minhash(row,a,b,p)
+        sign_dict[i]=op
+    sub_dict={k:sign_dict[k] for k in range(b*n_r,(b+1)*n_r) if k in sign_dict}
+    print(sub_dict)
+    raise Exception("No implemented yet")
 
 
 def hash_bands(data_file, seed, n_b, n_r):
