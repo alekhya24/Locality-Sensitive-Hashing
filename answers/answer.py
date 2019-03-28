@@ -19,10 +19,10 @@ sc = SparkContext()
 
 data_df=None
 data_f=None
-all_plants=None
 state_dict_rdd=None
 parts=None
 all_plants_indexed=None
+all_plants=None
 
 all_states = ["ab", "ak", "ar", "az", "ca", "co", "ct", "de", "dc",
               "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -246,60 +246,58 @@ def signatures(datafile, seed, n, state):
     state -- state abbreviation
     """
     spark = init_spark()
-    lines = spark.read.option("encoding", "ISO-8859-1").text(datafile).rdd
+    lines = spark.read.text(datafile).rdd
     parts= lines.map(lambda row: row.value.split(","))
     m=lines.count()
-    get_primes=primes(n,m)
     random.seed(seed)
     plants_df = createMatrix(parts)
     '''ip=plants_df.where(plants_df._1==state).select(plants_df._2).rdd.flatMap(lambda x:x).collect()
     flattened_list = list(itertools.chain(*ip))'''
     '''op = plants_df.mapValues(get_signMatrix)'''
-    dict_op=getFromPlantDict(state)
-    row = Row(**dict_op[0][0])
-    op_dict={}
-    for i in range(0,n):
+    states_dict=create_state_dict(m,n)
+    op_dict=states_dict[state]
+    return ppd(op_dict)
+
+def create_state_dict(m,n):
+    global states_dict
+    states_dict={}
+    get_primes=primes(n,m)
+    for state in all_states:
+        dict_op=getFromPlantDict(state)
+        op_dict={}
+        for i in range(0,n):
             a=random.randint(1,m)
             b=random.randint(1,m)
             p=get_primes[i]
-            op = minhash(row,a,b,p)
+            op = minhash(dict_op[0],a,b,p)
             op_dict[i]=op
-    return ppd(op_dict)
+        states_dict[state]=op_dict
+    return states_dict
 
 def getFromPlantDict(key):
     plants_dict_op = plants_data_f.select(plants_data_f._2).where(plants_data_f._1==key).collect()
-    return plants_dict_op
+    return plants_dict_op[0]
 
 def createMatrix(parts):
     spark = init_spark()
     plants_rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
     global plants_data_df
     plants_data_df = spark.createDataFrame(plants_rdd_data)
-    plants_data_df.cache()
-    global all_plants_indexed
-    
-    sorted_plants=plants_data_df.withColumn('plant_name', regexp_replace('plant_name', '×', ''))
-    '''.sort(col("plant_name"))'''
-    all_plants_indexed= sorted_plants.withColumn("id", monotonically_increasing_id())
-    all_plants = all_plants_indexed.select(all_plants_indexed.plant_name).rdd.flatMap(lambda x: x).collect()
-    rdd=create_Plants_Dict(all_plants_indexed,all_plants)
+    global all_plants
+    global all_plants_sorted
+    all_plants = sorted(plants_data_df.select(plants_data_df.plant_name).rdd.flatMap(lambda x: x).collect())
+    all_plants_sorted=all_plants[1:]
+    rdd=create_Plants_Dict(plants_data_df,all_plants_sorted)
     global plants_data_f
     plants_data_f =spark.createDataFrame(rdd)
     return plants_data_f
 
-def create_Plants_Dict(plants_df,all_plants):
+def create_Plants_Dict(plants_df,all_plants_data):
     dict_list=[()]
-    dict1={}
+    plant_data = plants_df.select(plants_df.plant_name).where(array_contains(plants_df.states,"qc")).rdd.flatMap(lambda x:x).collect()
     for state in all_states:
-        plant_data = plants_df.where(array_contains(plants_df.states,state)).collect()
-        '''for plant_name in all_plants:
-            for data in plant_data:
-                print(data.plant_name,plant_name)
-                if data.plant_name==plant_name:
-                    dict1[data.id]=1
-                else:
-                    dict1[data.id]=0'''
-        dict1= dict([ (data.id,1) if data.plant_name==plant_name  else (data.id,0) for data in plant_data for plant_name in all_plants])
+        plant_data = plants_df.select(plants_df.plant_name).where(array_contains(plants_df.states,state)).rdd.flatMap(lambda x:x).collect()
+        dict1= dict([ (index,1) if plant_name in plant_data  else (index,0) for index,plant_name in enumerate(all_plants_data)])
         op=(state,dict1)
         dict_list.append(op)
     rdd = sc.parallelize(dict_list[1:])
@@ -307,14 +305,12 @@ def create_Plants_Dict(plants_df,all_plants):
 
 def minhash(data,a,b,p):
     min_value=[]
-    row_dict=data.asDict()
-    trueIndex=0;
-    falseIndex=0;
-    for value in all_plants_indexed.collect():
-        index=value.id
-        if(row_dict[index]!=0):
-            hash_value = (a*index + b)%p
+    row_dict=data
+    for key,value in row_dict.items():
+        if value is not 0:
+            hash_value = (a*key + b)%p
             min_value.append(hash_value)
+            print(min_value)
     return min(min_value)
 
 def hash_band(datafile, seed, state, n, b, n_r):
@@ -352,17 +348,16 @@ def hash_band(datafile, seed, state, n, b, n_r):
     random.seed(seed)
     plants_df = createMatrix(parts)
     dict_op=getFromPlantDict(state)
-    row = Row(**dict_op[0][0])
     sign_dict={}
     for i in range(0,n):
         a=random.randint(1,m)
         b=random.randint(1,m)
         p=get_primes[i]
-        op = minhash(row,a,b,p)
+        op = minhash(dict_op[0],a,b,p)
         sign_dict[i]=op
     sub_dict=dict([(k,sign_dict[k]) for k in range(b*n_r,(b+1)*n_r) if k in sign_dict])
     sub_dict_str=str(sub_dict)
-    raise hash(sub_dict_str)
+    return hash(sub_dict_str)
 
 
 def hash_bands(data_file, seed, n_b, n_r):
@@ -389,8 +384,20 @@ def hash_bands(data_file, seed, n_b, n_r):
     n_b -- the number of bands
     n_r -- the number of rows in a given band
     """
-    raise Exception("Not implemented yet")
-
+    spark = init_spark()
+    lines = spark.read.text(datafile).rdd
+    parts= lines.map(lambda row: row.value.split(","))
+    m=lines.count()
+    get_primes=primes(n,m)
+    random.seed(seed)
+    plants_df = createMatrix(parts)
+    sign_dict_state={}
+    hash_dict={}
+    states_dict=create_state_dict(m,n)
+    for value in states_dict:
+        sub_dict=dict([(k,sign_dict_state[k]) for k in range(b*n_r,(b+1)*n_r) if k in sign_dict_state])
+        sub_dict_str=str(sub_dict)
+    
 
 def get_b_and_r(n, s):
     """The script written for the previous task takes <n_b> and <n_r> as
