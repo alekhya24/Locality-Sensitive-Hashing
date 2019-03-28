@@ -292,13 +292,14 @@ def create_Plants_Dict(plants_df,all_plants):
     dict1={}
     for state in all_states:
         plant_data = plants_df.where(array_contains(plants_df.states,state)).collect()
-        for plant_name in all_plants:
+        '''for plant_name in all_plants:
             for data in plant_data:
+                print(data.plant_name,plant_name)
                 if data.plant_name==plant_name:
                     dict1[data.id]=1
                 else:
-                    dict1[data.id]=0
-        '''dict1= dict([ (plant_name,1) if plant_name in plant_names  else (plant_name,0) for plant_name in all_plants])'''
+                    dict1[data.id]=0'''
+        dict1= dict([ (data.id,1) if data.plant_name==plant_name  else (data.id,0) for data in plant_data for plant_name in all_plants])
         op=(state,dict1)
         dict_list.append(op)
     rdd = sc.parallelize(dict_list[1:])
@@ -307,7 +308,6 @@ def create_Plants_Dict(plants_df,all_plants):
 def minhash(data,a,b,p):
     min_value=[]
     row_dict=data.asDict()
-    print(row_dict)
     trueIndex=0;
     falseIndex=0;
     for value in all_plants_indexed.collect():
