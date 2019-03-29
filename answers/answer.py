@@ -234,7 +234,8 @@ def signatures(datafile, seed, n, state):
     createDict(datafile)
     createminHash(n,seed)
     op_dict=states_dict[state]
-    return ppd(op_dict)
+    op=ppd(op_dict)
+    return op
 
 def createminHash(n,seed):
     global states_dict
@@ -333,7 +334,8 @@ def hash_bands(data_file, seed, n_b, n_r):
             tuple_op.append(tuple_data)
     rdd = sc.parallelize(tuple_op)
     group_rdd=rdd.groupByKey().map(lambda x:(x[0],list(x[1])))
-    print(ppb(group_rdd))
+    op=ppb(group_rdd)
+    print(op)
     
 
 def get_b_and_r(n, s):
