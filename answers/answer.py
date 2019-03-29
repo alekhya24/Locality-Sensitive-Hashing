@@ -226,8 +226,9 @@ def signatures(datafile, seed, n, state):
     n -- number of hash functions to generate
     state -- state abbreviation
     """
-    createDict(datafile)
-    createminHash(n,seed)
+    if states_dict==None:
+        createDict(data_file)
+        createminHash(n,seed)
     op_dict=states_dict[state]
     op=ppd(op_dict)
     print(op)
@@ -331,7 +332,6 @@ def hash_bands(data_file, seed, n_b, n_r):
     group_rdd=rdd.groupByKey().map(lambda x:(x[0],list(x[1])))
     final_op=group_rdd.filter(lambda x: len(x[1]) > 1)
     op=ppb(final_op)
-    print(op)
     return op
     
 
