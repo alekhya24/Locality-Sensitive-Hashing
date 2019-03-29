@@ -19,6 +19,7 @@ state_dict_rdd=None
 parts=None
 all_plants_indexed=None
 all_plants_dict = OrderedDict()
+states_dict=None
 
 all_states = ["ab", "ak", "ar", "az", "ca", "co", "ct", "de", "dc",
               "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -287,12 +288,12 @@ def hash_band(datafile, seed, state, n, b, n_r):
     b -- the band index
     n_r -- the number of rows
     """
-    createDict(datafile)
-    createminHash(n,seed)
+    if states_dict==None:
+        createDict(datafile)
+        createminHash(n,seed)
+    print(state)
     hash_band_dict=states_dict[state]
-    print(hash_band_dict)
     sub_dict=dict((k,hash_band_dict[k]) for k in range(b*n_r,(b+1)*n_r) if k in hash_band_dict)
-    print(sub_dict)
     sub_dict_str=str(sub_dict)
     return hash(sub_dict_str)
 
@@ -321,19 +322,18 @@ def hash_bands(data_file, seed, n_b, n_r):
     n_b -- the number of bands
     n_r -- the number of rows in a given band
     """
-    spark = init_spark()
-    lines = spark.read.text(datafile).rdd
-    parts= lines.map(lambda row: row.value.split(","))
-    m=lines.count()
-    get_primes=primes(n,m)
-    random.seed(seed)
-    plants_df = createMatrix(parts)
-    sign_dict_state={}
-    hash_dict={}
-    states_dict=create_state_dict(m,n)
-    for value in states_dict:
-        sub_dict=dict([(k,sign_dict_state[k]) for k in range(b*n_r,(b+1)*n_r) if k in sign_dict_state])
-        sub_dict_str=str(sub_dict)
+    n=n_b *n_r
+    if states_dict==None:
+        createDict(data_file)
+        createminHash(n,seed)
+    tuple_op=[]
+    for i in range(0,n_b):
+        for k,v in states_dict.items():
+            tuple_data= ((i,hash_band(data_file,seed,k,n,i,n_r)),k)
+            tuple_op.append(tuple_data)
+    rdd = sc.parallelize(tuple_op)
+    group_rdd=rdd.groupByKey().map(lambda x:(x[0],list(x[1])))
+    print(ppb(group_rdd))
     
 
 def get_b_and_r(n, s):
