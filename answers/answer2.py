@@ -5,20 +5,7 @@ import random
 # Dask imports
 import dask.bag as db
 import dask.dataframe as df
-from pyspark.sql import Row
-from pyspark import SparkContext
-from pyspark.sql.functions import array_contains,array
-from pyspark.sql.functions import col
-from collections import OrderedDict
-sc = SparkContext()
 
-
-data_df=None
-data_f=None
-state_dict_rdd=None
-parts=None
-all_plants_indexed=None
-all_plants_dict = OrderedDict()
 
 all_states = ["ab", "ak", "ar", "az", "ca", "co", "ct", "de", "dc",
               "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -57,6 +44,8 @@ def toCSVLine(data):
         return toCSVLineRDD(data.rdd)
     return None
 
+from collections import OrderedDict
+all_plant_dict = OrderedDict()
 
 def data_preparation(data_file, key, state):
     """Our implementation of LSH will be based on RDDs. As in the clustering
@@ -83,27 +72,24 @@ def data_preparation(data_file, key, state):
     key -- plant name
     state -- state abbreviation (see: all_states)
     """
-    createDict(data_file)
-    dict_op=getFromDict(state)
-    return dict_op[0][key]
-
-def getFromDict(state):
-    dict_op = state_data.filter(lambda val : val[0] == state).map(lambda val : val[1]).collect()
-    return dict_op
-
-def createDict(data_file):
-    global all_plants_dict
+    from collections import OrderedDict
+    global all_plant_dict
     spark = init_spark()
-    lines = spark.sparkContext.textFile(data_file)
+    data = spark.sparkContext.textFile(data_file)
 
-    all_plants = lines.map(lambda val: val.split(",")[0]).collect()
-    all_plants_dict = OrderedDict([(plant, 0) for plant in all_plants])
+    all_plant = data.map(lambda val: val.split(",")[0]).collect()
+    all_plant_dict = OrderedDict([(plant, 0) for plant in all_plant])
 
-    data = lines.map(lambda val : (val.split(",")[0] , val.split(",")[1:]) ).flatMapValues(lambda val : val)	
+    data = data.map(lambda val : (val.split(",")[0] , val.split(",")[1:]) ).flatMapValues(lambda val : val)
     data = data.map(lambda val : ( val[1] , [val[0]] )).reduceByKey(lambda x,y : x+y)
-    global state_data
-    state_data = data.map(lambda x: ( x[0], {**all_plants_dict, **OrderedDict([(t, 1) for t in x[1]])}  ))
-    
+    data = data.map(lambda x: ( x[0], {**all_plant_dict, **OrderedDict([(t, 1) for t in x[1]])}  ))
+
+    result = data.filter(lambda val : val[0] == state).map(lambda val : val[1]).collect()
+    if ( (key != '') & (state != '')):
+        return result[0][key]
+    else:
+        return data
+
 
 def primes(n, c):
     """To create signatures we need hash functions (see next task). To create
@@ -118,20 +104,15 @@ def primes(n, c):
     c -- minimum prime number value
     """
     primes = []
-    possiblePrime=c
-    while(True):
-    # Assume number is prime until shown it is not. 
-        isPrime = True
-        for num in range(2, int(possiblePrime ** 0.5) + 1):
-            if possiblePrime % num == 0:
-                isPrime = False
-                break
-      
-        if isPrime and possiblePrime>=c and len(primes)<n:
-            primes.append(possiblePrime)
-        if(len(primes)==n):
+    import math
+    while True:
+        if len(primes) == n:
             break
-        possiblePrime+=1
+        l = list(range(2, math.ceil(pow(  c , 1/2  )+1  )))
+        result = [False for i in l if (c % i == 0)]
+        if False not in result:
+            primes.append(c)
+        c+=1
     return primes
 
 
@@ -153,12 +134,14 @@ def hash_plants(s, m, p, x):
     p -- prime number
     x -- value to be hashed
     """
-    if s!=None:
+    if s != None:
         random.seed(s)
-    a = random.randint(1,m)
-    b=random.randint(1,m)
-    hash_value = (a*x + b)%p
-    return hash_value
+    a = random.randint(1, m)
+    b = random.randint(1, m)
+    #print("a : {0}\nb : {1}".format(a,b))
+    val = (a*x + b) % p
+
+    return val
 
 
 def hash_list(s, m, n, i, x):
@@ -180,20 +163,21 @@ def hash_list(s, m, n, i, x):
     i -- index of hash function to use
     x -- value to hash
     """
-    get_primes =primes(n,m)
-    ith_prime_number=get_primes[i]
-    hash_values=create_hash_list(get_primes,s,m,n,x)   
-    return hash_values[i]
+    from collections import OrderedDict
 
-def create_hash_list(prime_list,s,m,n,x):
-    hash_values=[]
-    for j in range(0,n):
-        if j==0:
-            hash_values.append(hash_plants(s,m,prime_list[j],x))
+    hash_function = {}
+    for j in range(0, i+2):
+        p = primes(j + 1, m)[j]
+        if j == 0:
+            hash_function[j] = hash_plants(s , m, p , x)
         else:
-            hash_values.append(hash_plants(None,m,prime_list[j],x))
-    return hash_values
-    
+            hash_function[j] = hash_plants(None, m, p, x)
+        #print("For execution {0}, the value of p is : {1}, the result of hash function is : {2}".format(j,p,hash_function[j]))
+
+    return hash_function[i]
+
+signature_rdd = None
+signature_rdd_list  = []
 
 def signatures(datafile, seed, n, state):
     """We will now compute the min-hash signature matrix of the states.
@@ -230,42 +214,48 @@ def signatures(datafile, seed, n, state):
     n -- number of hash functions to generate
     state -- state abbreviation
     """
-    createDict(datafile)
-    createminHash(n,seed)
-    op_dict=states_dict[state]
-    return ppd(op_dict)
+    spark = init_spark()
+    from collections import OrderedDict
+    global all_plant_dict, signature_rdd, signature_rdd_list
+    #state_rdd = data_preparation(datafile, '', '')
+    final_result = {}
+    data = data_preparation(datafile, '', '')
+    data_dict = OrderedDict(data.collect())
+    print(data_dict)
+    all_plant = sorted(all_plant_dict.keys())
+    m = len(all_plant)
 
-def createminHash(n,seed):
-    global states_dict
-    states_dict={}
-    data_dict = OrderedDict(state_data.collect())
-    final_result={}
     for s in data_dict.keys():
         temp_dict = {}
         for i in range(0, n):
             temp_dict[i] = 0
-        states_dict[s] = temp_dict
-    all_plants=sorted(all_plants_dict.keys())
-    m=len(all_plants)
-    get_primes=primes(n,m)
+        final_result[s] = temp_dict
+
+    prime_list = primes(n, m)
     random.seed(seed)
-    for i in range(0,n):
-        hash_op={}
-        a=random.randint(1,m)
-        b=random.randint(1,m)
-        for state in data_dict.keys():
-            op=0
-            dict_op=data_dict[state]            
-            p=get_primes[i]
-            op = ([(a*index + b)%p for index in range(len(all_plants)) if dict_op[all_plants[index]] == 1  ])
-            states_dict[state][i] = min(op)
+
+    for i in range(0, n ):
+        a = random.randint(1,m)
+        b = random.randint(1,m)
+        for s in data_dict.keys():
+            l = 0
+            plant_dict = data_dict[s]
+            l = ([(x*a + b)%prime_list[i] for x in range(len(all_plant)) if plant_dict[all_plant[x]] == 1  ])
+            final_result[s][i] = min(l)
+    print("This is the result of qc we get : ",final_result['qc'])
+    result_rdd = spark.sparkContext.parallelize([val for val in data_dict.keys()])
+    result_rdd = result_rdd.map(lambda val : (val, final_result[val]) )
+    output = result_rdd.filter(lambda val : val[0] == state).map(lambda x: x[1]).collect()
+    signature_rdd = result_rdd
+    signature_rdd_list = result_rdd.collect()
+    return output[0]
+
 
 def hash_band(datafile, seed, state, n, b, n_r):
     """We will now hash the signature matrix in bands. All signature vectors,
     that is, state signatures contained in the RDD computed in the previous
     question, can be hashed independently. Here we compute the hash of a band
-    of a signature vec
-    tor.
+    of a signature vector.
 
     Task: Write a script that, given the signature dictionary of state <state>
     computed from <n> hash functions (as defined in the previous task),
@@ -287,15 +277,20 @@ def hash_band(datafile, seed, state, n, b, n_r):
     b -- the band index
     n_r -- the number of rows
     """
-    createDict(datafile)
-    createminHash(n,seed)
-    hash_band_dict=states_dict[state]
-    print(hash_band_dict)
-    sub_dict=dict((k,hash_band_dict[k]) for k in range(b*n_r,(b+1)*n_r) if k in hash_band_dict)
-    print(sub_dict)
-    sub_dict_str=str(sub_dict)
-    return hash(sub_dict_str)
+    global signature_rdd, signature_rdd_list
+    if signature_rdd == None:
+        print("Calculating Signature matrix")
+        signatures(datafile, seed, n, state)
 
+    for s, d in signature_rdd_list:
+        if s == state:
+            matrix_dict = d
+
+    subdict_string = ''
+    index_list = [i for i in range(b*n_r , (b+1)*n_r ) ]
+    subdict = dict((key,value) for key,value in matrix_dict.items() if key in index_list)
+
+    return hash(str(subdict))
 
 def hash_bands(data_file, seed, n_b, n_r):
     """We will now hash the complete signature matrix
@@ -322,19 +317,28 @@ def hash_bands(data_file, seed, n_b, n_r):
     n_r -- the number of rows in a given band
     """
     spark = init_spark()
-    lines = spark.read.text(datafile).rdd
-    parts= lines.map(lambda row: row.value.split(","))
-    m=lines.count()
-    get_primes=primes(n,m)
-    random.seed(seed)
-    plants_df = createMatrix(parts)
-    sign_dict_state={}
-    hash_dict={}
-    states_dict=create_state_dict(m,n)
-    for value in states_dict:
-        sub_dict=dict([(k,sign_dict_state[k]) for k in range(b*n_r,(b+1)*n_r) if k in sign_dict_state])
-        sub_dict_str=str(sub_dict)
-    
+    n = n_b*n_r #number of hash function to generate
+    global signature_rdd,signature_rdd_list
+    if signature_rdd == None:
+        signatures(data_file , seed, n, 'qc')
+
+    result = []
+    for i in range(0, n_b):
+        for state,dic in signature_rdd_list:
+            tup = ((i , hash_band(data_file, seed, state, n, i, n_r)),state)
+            result.append(tup)
+
+    print("This is the result before groupby : ",result)
+
+    hashed_rdd = spark.sparkContext.parallelize(result)
+    h = hashed_rdd.groupByKey().map(lambda x: (x[0], list(x[1]))).filter(lambda x: len(x[1]) > 1)
+    result = h.collect()
+    return_string = ppb(h)
+    print(return_string)
+    return return_string
+
+
+#hash_bands(r"../data/plants.data", 123, 5, 7)
 
 def get_b_and_r(n, s):
     """The script written for the previous task takes <n_b> and <n_r> as
