@@ -327,7 +327,7 @@ def hash_bands(data_file, seed, n_b, n_r):
     tuple_op=[]
     for i in range(0,n_b):
         for k,v in states_dict.items():
-            tuple_data= ((i,getHashBand(state,i,n_r)),k)
+            tuple_data= ((i,getHashBand(k,i,n_r)),k)
             tuple_op.append(tuple_data)
     rdd = sc.parallelize(tuple_op)
     group_rdd=rdd.groupByKey().map(lambda x:(x[0],list(x[1])))
