@@ -226,9 +226,8 @@ def signatures(datafile, seed, n, state):
     n -- number of hash functions to generate
     state -- state abbreviation
     """
-    if states_dict==None:
-        createDict(data_file)
-        createminHash(n,seed)
+    createDict(datafile)
+    createminHash(n,seed)
     op_dict=states_dict[state]
     op=ppd(op_dict)
     print(op)
@@ -286,9 +285,8 @@ def hash_band(datafile, seed, state, n, b, n_r):
     b -- the band index
     n_r -- the number of rows
     """
-    if states_dict==None:
-        createDict(datafile)
-        createminHash(n,seed)
+    createDict(datafile)
+    createminHash(n,seed)
     hash_band_dict=states_dict[state]
     sub_dict=dict((k,hash_band_dict[k]) for k in range(b*n_r,(b+1)*n_r) if k in hash_band_dict)
     sub_dict_str=str(sub_dict)
@@ -320,9 +318,8 @@ def hash_bands(data_file, seed, n_b, n_r):
     n_r -- the number of rows in a given band
     """
     n=n_b *n_r
-    if states_dict==None:
-        createDict(data_file)
-        createminHash(n,seed)
+    createDict(data_file)
+    createminHash(n,seed)
     tuple_op=[]
     for i in range(0,n_b):
         for k,v in states_dict.items():
