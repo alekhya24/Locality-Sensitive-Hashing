@@ -5,10 +5,6 @@ import random
 # Dask imports
 import dask.bag as db
 import dask.dataframe as df
-from pyspark.sql import Row
-from pyspark import SparkContext
-from pyspark.sql.functions import array_contains,array
-from pyspark.sql.functions import col
 from collections import OrderedDict
 sc = SparkContext()
 
@@ -116,7 +112,6 @@ def primes(n, c):
     primes = []
     possiblePrime=c
     while(True):
-    # Assume number is prime until shown it is not. 
         isPrime = True
         for num in range(2, int(possiblePrime ** 0.5) + 1):
             if possiblePrime % num == 0:
@@ -230,19 +225,17 @@ def signatures(datafile, seed, n, state):
     createminHash(n,seed)
     op_dict=states_dict[state]
     op=ppd(op_dict)
-    print(op)
     return op_dict
 
 def createminHash(n,seed):
     global states_dict
     states_dict={}
     data_dict = OrderedDict(state_data.collect())
-    final_result={}
     for s in data_dict.keys():
-        temp_dict = {}
+        hash_dict = {}
         for i in range(0, n):
-            temp_dict[i] = 0
-        states_dict[s] = temp_dict
+            hash_dict[i] = 0
+        states_dict[s] = hash_dict
     all_plants=sorted(all_plants_dict.keys())
     m=len(all_plants)
     get_primes=primes(n,m)
