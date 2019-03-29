@@ -287,10 +287,10 @@ def hash_band(datafile, seed, state, n, b, n_r):
     """
     createDict(datafile)
     createminHash(n,seed)
-    op =getHashBand(state)
+    op =getHashBand(state,b,n_r)
     return op
 
-def getHashBand(state):
+def getHashBand(state,b,n_r):
     hash_band_dict=states_dict[state]
     sub_dict=dict((k,hash_band_dict[k]) for k in range(b*n_r,(b+1)*n_r) if k in hash_band_dict)
     sub_dict_str=str(sub_dict)
@@ -327,7 +327,7 @@ def hash_bands(data_file, seed, n_b, n_r):
     tuple_op=[]
     for i in range(0,n_b):
         for k,v in states_dict.items():
-            tuple_data= ((i,getHashBand(state)),k)
+            tuple_data= ((i,getHashBand(state,i,n_r)),k)
             tuple_op.append(tuple_data)
     rdd = sc.parallelize(tuple_op)
     group_rdd=rdd.groupByKey().map(lambda x:(x[0],list(x[1])))
