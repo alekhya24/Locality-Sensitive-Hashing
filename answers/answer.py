@@ -13,9 +13,6 @@ from collections import OrderedDict
 sc = SparkContext()
 
 
-data_df=None
-data_f=None
-all_plants_indexed=None
 all_plants_dict = OrderedDict()
 states_dict=None
 
