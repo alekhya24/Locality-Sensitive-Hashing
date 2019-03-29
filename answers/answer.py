@@ -7,13 +7,9 @@ import dask.bag as db
 import dask.dataframe as df
 from pyspark.sql import Row
 from pyspark import SparkContext
-from pyspark.ml.linalg import SparseVector
-from pyspark.sql.functions import regexp_replace
 from pyspark.sql.functions import array_contains,array
-from pyspark.sql.functions import monotonically_increasing_id
 from pyspark.sql.functions import col
-import numpy as np
-import itertools
+from collections import OrderedDict
 sc = SparkContext()
 
 
@@ -22,7 +18,7 @@ data_f=None
 state_dict_rdd=None
 parts=None
 all_plants_indexed=None
-all_plants=None
+all_plants_dict = OrderedDict()
 
 all_states = ["ab", "ak", "ar", "az", "ca", "co", "ct", "de", "dc",
               "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la",
@@ -87,38 +83,27 @@ def data_preparation(data_file, key, state):
     key -- plant name
     state -- state abbreviation (see: all_states)
     """
-    spark = init_spark()
-    lines = spark.read.text(data_file).rdd
-    global parts
-    parts= lines.map(lambda row: row.value.split(","))
-    rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
-    global data_df                         
-    data_df = spark.createDataFrame(rdd_data)
-    data_df.cache()
-    rdd=createDict(data_df)
-    global data_f
-    data_f = spark.createDataFrame(rdd)
-    data_f.cache()
-    print(data_f)
-    dict_op=getFromDict(key)
-    row = Row(**dict_op[0][0])
-    return row.asDict()[state]
+    createDict(data_file)
+    dict_op=getFromDict(state)
+    return dict_op[0][key]
 
-def getFromDict(key):
-    dict_op = data_f.select(data_f._2).where(data_f._1==key).collect()
+def getFromDict(state):
+    dict_op = state_data.filter(lambda val : val[0] == state).map(lambda val : val[1]).collect()
     return dict_op
 
-def createDict(data):
-    dict_list=[()]
-    for iteration in data.collect():
-        plant_states=iteration.states
-        dict1= dict( [ (state,1) if state in plant_states  else (state,0) for state in all_states] )
-        tuple_data=(iteration.plant_name,dict1)
-        dict_list.append(tuple_data)
-    global state_dict_rdd
-    state_dict_rdd = sc.parallelize(dict_list[1:])
-    return state_dict_rdd
+def createDict(data_file):
+    global all_plants_dict
+    spark = init_spark()
+    lines = spark.sparkContext.textFile(data_file)
 
+    all_plants = lines.map(lambda val: val.split(",")[0]).collect()
+    all_plants_dict = OrderedDict([(plant, 0) for plant in all_plants])
+
+    data = lines.map(lambda val : (val.split(",")[0] , val.split(",")[1:]) ).flatMapValues(lambda val : val)	
+    data = data.map(lambda val : ( val[1] , [val[0]] )).reduceByKey(lambda x,y : x+y)
+    global state_data
+    state_data = data.map(lambda x: ( x[0], {**all_plants_dict, **OrderedDict([(t, 1) for t in x[1]])}  ))
+    
 
 def primes(n, c):
     """To create signatures we need hash functions (see next task). To create
@@ -245,73 +230,29 @@ def signatures(datafile, seed, n, state):
     n -- number of hash functions to generate
     state -- state abbreviation
     """
-    spark = init_spark()
-    lines = spark.read.text(datafile).rdd
-    parts= lines.map(lambda row: row.value.split(","))
-    m=lines.count()
-    random.seed(seed)
-    plants_df = createMatrix(parts)
-    '''ip=plants_df.where(plants_df._1==state).select(plants_df._2).rdd.flatMap(lambda x:x).collect()
-    flattened_list = list(itertools.chain(*ip))'''
-    '''op = plants_df.mapValues(get_signMatrix)'''
-    states_dict=create_state_dict(m,n)
+    createDict(datafile)
+    m=len(all_plants_dict.keys())
+    createminHash(m,n,seed)
     op_dict=states_dict[state]
     return ppd(op_dict)
 
-def create_state_dict(m,n):
+def createminHash(m,n,seed):
     global states_dict
     states_dict={}
     get_primes=primes(n,m)
+    random.seed(seed)
+    all_plants=sorted(all_plants_dict.keys())
     for state in all_states:
-        dict_op=getFromPlantDict(state)
+        dict_op=getFromDict(state)[0]
         op_dict={}
         for i in range(0,n):
             a=random.randint(1,m)
             b=random.randint(1,m)
             p=get_primes[i]
-            op = minhash(dict_op[0],a,b,p)
-            op_dict[i]=op
+            op = ([(a*index + b)%p for index in range(len(all_plants)) if dict_op[all_plants[index]] == 1  ])
+            op_dict[i]=min(op)
         states_dict[state]=op_dict
     return states_dict
-
-def getFromPlantDict(key):
-    plants_dict_op = plants_data_f.select(plants_data_f._2).where(plants_data_f._1==key).collect()
-    return plants_dict_op[0]
-
-def createMatrix(parts):
-    spark = init_spark()
-    plants_rdd_data = parts.map(lambda p: Row(plant_name=p[0], states=p[1:]))
-    global plants_data_df
-    plants_data_df = spark.createDataFrame(plants_rdd_data)
-    global all_plants
-    global all_plants_sorted
-    all_plants = sorted(plants_data_df.select(plants_data_df.plant_name).rdd.flatMap(lambda x: x).collect())
-    all_plants_sorted=all_plants[1:]
-    rdd=create_Plants_Dict(plants_data_df,all_plants_sorted)
-    global plants_data_f
-    plants_data_f =spark.createDataFrame(rdd)
-    return plants_data_f
-
-def create_Plants_Dict(plants_df,all_plants_data):
-    dict_list=[()]
-    plant_data = plants_df.select(plants_df.plant_name).where(array_contains(plants_df.states,"qc")).rdd.flatMap(lambda x:x).collect()
-    for state in all_states:
-        plant_data = plants_df.select(plants_df.plant_name).where(array_contains(plants_df.states,state)).rdd.flatMap(lambda x:x).collect()
-        dict1= dict([ (index,1) if plant_name in plant_data  else (index,0) for index,plant_name in enumerate(all_plants_data)])
-        op=(state,dict1)
-        dict_list.append(op)
-    rdd = sc.parallelize(dict_list[1:])
-    return rdd
-
-def minhash(data,a,b,p):
-    min_value=[]
-    row_dict=data
-    for key,value in row_dict.items():
-        if value is not 0:
-            hash_value = (a*key + b)%p
-            min_value.append(hash_value)
-            print(min_value)
-    return min(min_value)
 
 def hash_band(datafile, seed, state, n, b, n_r):
     """We will now hash the signature matrix in bands. All signature vectors,
@@ -347,7 +288,7 @@ def hash_band(datafile, seed, state, n, b, n_r):
     get_primes=primes(n,m)
     random.seed(seed)
     plants_df = createMatrix(parts)
-    dict_op=getFromPlantDict(state)
+    dict_op=getFromDict(state)
     sign_dict={}
     for i in range(0,n):
         a=random.randint(1,m)
