@@ -15,8 +15,6 @@ sc = SparkContext()
 
 data_df=None
 data_f=None
-state_dict_rdd=None
-parts=None
 all_plants_indexed=None
 all_plants_dict = OrderedDict()
 states_dict=None
@@ -235,7 +233,8 @@ def signatures(datafile, seed, n, state):
     createminHash(n,seed)
     op_dict=states_dict[state]
     op=ppd(op_dict)
-    return op
+    print(op)
+    return op_dict
 
 def createminHash(n,seed):
     global states_dict
