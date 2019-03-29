@@ -335,7 +335,7 @@ def hash_bands(data_file, seed, n_b, n_r):
     rdd = sc.parallelize(tuple_op)
     group_rdd=rdd.groupByKey().map(lambda x:(x[0],list(x[1])))
     op=ppb(group_rdd)
-    print(op)
+    return op
     
 
 def get_b_and_r(n, s):
